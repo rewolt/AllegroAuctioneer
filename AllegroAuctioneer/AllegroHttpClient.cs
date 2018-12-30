@@ -1,5 +1,7 @@
-﻿using System;
+﻿using Serilog;
+using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Web;
@@ -8,29 +10,41 @@ namespace AllegroAuctioneer
 {
     class AllegroHttpClient : HttpClient
     {
-        private readonly HttpClient client;
+        private readonly HttpClient _client;
+        private readonly Uri _uri;
         private readonly string loginUrl;
-        public AllegroHttpClient(Uri allegroUri)
+        private readonly ILogger _logger;
+        private readonly HttpClientHandler _httpClientHandler;
+        public AllegroHttpClient(Uri allegroUri, ILogger logger)
         {
-            client = new HttpClient();
-            client.BaseAddress = allegroUri;
+            _uri = allegroUri;
+            _httpClientHandler = new HttpClientHandler();
+            _httpClientHandler.CookieContainer = new CookieContainer();
+
+            _client = new HttpClient(_httpClientHandler);
+            _client.BaseAddress = _uri;
             loginUrl = "login/auth";
+            _logger = logger;
         }
 
-        public string SignIn(string login, string password)
+        public void SignIn(string login, string password)
         {
-            
-            var loginPage = client.GetAsync(loginUrl).Result;
-            var sb = new StringBuilder();
-
-            foreach(var header in loginPage.Headers)
+            HttpResponseMessage loginResponse;
+            try
             {
-                foreach (var val in header.Value)
+                loginResponse = _client.GetAsync(loginUrl).Result;
+                loginResponse.EnsureSuccessStatusCode();
+
+                CookieCollection cookies = _httpClientHandler.CookieContainer.GetCookies(_uri);
+                foreach (var cookie in cookies)
                 {
-                    sb.AppendLine(string.Join(" :\t", new string[] { header.Key, val }));
+                    _logger.Information(cookie.ToString());
                 }
             }
-            return sb.ToString();
+            catch (HttpRequestException ex)
+            {
+                _logger.Error(ex, "Error when connecting to allegro");
+            }
         }
     }
 }
